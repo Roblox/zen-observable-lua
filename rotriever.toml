@@ -1,0 +1,9 @@
+[package]
+name = "ZenObservable"
+version = "0.1.0"
+author = "Roblox"
+content_root = "src"
+
+[dev_dependencies]
+JestRoblox = "github.com/roblox/jest-roblox@0.7.1"
+LuauPolyfill = "github.com/roblox/luau-polyfill@0.1.5"

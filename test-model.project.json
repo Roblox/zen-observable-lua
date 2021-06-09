@@ -1,0 +1,12 @@
+{
+  "name": "ZenObservableTestModel",
+  "tree": {
+    "$className": "Folder",
+    "Packages": {
+      "$path": "Packages",
+      "ZenObservable": {
+        "$path": "src"
+      }
+    }
+  }
+}
