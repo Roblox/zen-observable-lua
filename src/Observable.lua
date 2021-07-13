@@ -1,9 +1,11 @@
-local rootWorkspace = script.Parent
-local PackagesWorkspace = rootWorkspace.Parent
+-- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/src/Observable.js
+local rootWorkspace = script.Parent.Parent
 
-local LuauPolyfill = require(PackagesWorkspace.Dev.LuauPolyfill)
+local LuauPolyfill = require(rootWorkspace.Dev.LuauPolyfill)
+local Promise = require(rootWorkspace.Dev.Promise)
 local instanceOf = LuauPolyfill.instanceof
 local Boolean = LuauPolyfill.Boolean
+local setTimeout = LuauPolyfill.setTimeout
 
 -- ROBLOX TODO: There isn't yet a need to convert the majority of this code.
 --              The Apollo Client conversion only needs the Observable class,
@@ -30,17 +32,18 @@ local Boolean = LuauPolyfill.Boolean
 -- local SymbolIterator = getSymbol("iterator")
 -- local SymbolObservable = getSymbol("observable")
 -- local SymbolSpecies = getSymbol("species")
--- local function getMethod(obj, key)
---     local value = obj[tostring(key)]
---     if Boolean.toJSBoolean(value == nil --[[ ROBLOX CHECK: loose equality used upstream ]] ) then
---         return nil
---     end
---     if Boolean.toJSBoolean(typeof(value) ~= "function") then
---         error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ThrowStatement ]]
---         --[[ throw new TypeError(value + ' is not a function'); ]]
---     end
---     return value
--- end
+
+local function getMethod(obj, key)
+	local value = obj[tostring(key)]
+	if value == nil then
+		return nil
+	end
+	if typeof(value) ~= "function" then
+		error(tostring(value) .. " is not a function")
+	end
+	return value
+end
+
 -- local function getSpecies(obj)
 --     local ctor = obj.constructor
 --     -- if Boolean.toJSBoolean(ctor ~= nil) then ctor = ctor[tostring(SymbolSpecies)],if Boolean.toJSBoolean(ctor == nil) then ctor = nil
@@ -54,132 +57,201 @@ local Boolean = LuauPolyfill.Boolean
 --     --[[ x instanceof Observable ]]
 --     return error("not implemented")
 -- end
--- local function hostReportError(e)
---     if Boolean.toJSBoolean(hostReportError.log) then
---         hostReportError:log(e)
---     else
---         setTimeout(
---             function() error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ThrowStatement ]] --[[ throw e ]] end)
---     end
--- end
--- local function enqueue(fn)
---     Promise:resolve():then_(function()
---         error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: TryStatement ]]
---         --[[ try { fn() }
---       catch (e) { hostReportError(e) } ]]
---     end)
--- end
--- local function cleanupSubscription(subscription)
---     local cleanup = subscription._cleanup
---     if Boolean.toJSBoolean(cleanup == nil) then return end
---     undefined = nil
---     if not Boolean.toJSBoolean(cleanup) then return end
---     error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: TryStatement ]]
---     --[[ try {
---       if (typeof cleanup === 'function') {
---         cleanup();
---       } else {
---         let unsubscribe = getMethod(cleanup, 'unsubscribe');
---         if (unsubscribe) {
---           unsubscribe.call(cleanup);
---         }
---       }
---     } catch (e) {
---       hostReportError(e);
---     } ]]
--- end
--- local function closeSubscription(subscription)
---     undefined = nil
---     undefined = nil
---     undefined = "closed"
--- end
--- local function flushSubscription(subscription)
---     local queue = subscription._queue
---     if not Boolean.toJSBoolean(queue) then return end
---     undefined = nil
---     undefined = "ready"
---     error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ForStatement ]]
---     --[[ for (let i = 0; i < queue.length; ++i) {
---       notifySubscription(subscription, queue[i].type, queue[i].value);
---       if (subscription._state === 'closed')
---         break;
---     } ]]
--- end
--- local function notifySubscription(subscription, type, value)
---     undefined = "running"
---     local observer = subscription._observer
---     error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: TryStatement ]]
---     --[[ try {
---       let m = getMethod(observer, type);
---       switch (type) {
---         case 'next':
---           if (m) m.call(observer, value);
---           break;
---         case 'error':
---           closeSubscription(subscription);
---           if (m) m.call(observer, value);
---           else throw value;
---           break;
---         case 'complete':
---           closeSubscription(subscription);
---           if (m) m.call(observer);
---           break;
---       }
---     } catch (e) {
---       hostReportError(e);
---     } ]]
---     if Boolean.toJSBoolean(subscription._state == "closed") then
---         cleanupSubscription(subscription)
---     elseif Boolean.toJSBoolean(subscription._state == "running") then
---         undefined = "ready"
---     end
--- end
--- local function onNotify(subscription, type, value)
---     if Boolean.toJSBoolean(subscription._state == "closed") then return end
---     -- if Boolean.toJSBoolean(subscription._state == "buffering") then subscription._queue:push({type = type, value = value}),return
---     -- end
---     -- if Boolean.toJSBoolean(subscription._state ~= "ready") then undefined = "buffering",undefined = {{type = type, value = value}},enqueue(function()
---     -- return flushSubscription(subscription)
---     -- end),return
---     -- end
---     notifySubscription(subscription, type, value)
--- end
--- error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ClassDeclaration ]]
+
+-- ROBLOX upstream deviation: hostReportError.log, lua functions does not support having other properties, so using setmetatable with __call enables to suppport this
+local hostReportError
+hostReportError = setmetatable({}, {
+	__call = function(e)
+		if Boolean.toJSBoolean(hostReportError.log) then
+			hostReportError:log(e)
+		else
+			setTimeout(function()
+				error(e)
+			end, 0)
+		end
+	end,
+})
+
+local function enqueue(fn)
+	Promise.delay(0):doneCall(function()
+		local _status, _err = pcall(function()
+			fn()
+		end)
+		if _err ~= nil then
+			hostReportError(_err)
+		end
+	end)
+end
+
+local function cleanupSubscription(subscription)
+	local cleanup = subscription._cleanup
+	if cleanup == nil then
+		return
+	end
+
+	subscription._cleanup = nil
+
+	if not Boolean.toJSBoolean(cleanup) then
+		return
+	end
+
+	local ok, err = pcall(function()
+		if typeof(cleanup) == "function" then
+			cleanup()
+		else
+			local unsubscribe = getMethod(cleanup, "unsubscribe")
+			if Boolean.toJSBoolean(unsubscribe) then
+				unsubscribe(cleanup)
+			end
+		end
+	end)
+	if not ok then
+		hostReportError(err)
+	end
+end
+
+local function closeSubscription(subscription)
+	subscription._observer = nil
+	subscription._queue = nil
+	subscription._state = "closed"
+end
+
+local function notifySubscription(subscription, type, value)
+	subscription._state = "running"
+	local observer = subscription._observer
+
+	local ok, err = pcall(function()
+		local m = getMethod(observer, type)
+		if type == "next" then
+			if Boolean.toJSBoolean(m) then
+				m(observer, value)
+			end
+		elseif type == "error" then
+			closeSubscription(subscription)
+			if Boolean.toJSBoolean(m) then
+				m(observer, value)
+			else
+				error(value)
+			end
+		elseif type == "complete" then
+			if Boolean.toJSBoolean(m) then
+				m(observer, value)
+			end
+		end
+	end)
+	if not ok then
+		hostReportError(err)
+	end
+
+	if subscription._state == "closed" then
+		cleanupSubscription(subscription)
+	elseif subscription._state == "running" then
+		subscription._state = "ready"
+	end
+end
+
+local function flushSubscription(subscription)
+	local queue = subscription._queue
+	if not Boolean.toJSBoolean(queue) then
+		return
+	end
+
+	subscription._queue = nil
+	subscription._state = "ready"
+
+	for i = 1, table.getn(queue), 1 do
+		notifySubscription(subscription, queue[i].type, queue[i].value)
+		if subscription._state == "closed" then
+			break
+		end
+	end
+end
+
+local function onNotify(subscription, type, value)
+	if subscription._state == "closed" then
+		return
+	end
+	if subscription._state == "buffering" then
+		subscription._queue:push({ type = type, value = value })
+		return
+	end
+	if subscription._state ~= "ready" then
+		subscription._state = "buffering"
+
+		subscription._queue = { { type = type, value = value } }
+		enqueue(function()
+			return flushSubscription(subscription)
+		end)
+		return
+	end
+	notifySubscription(subscription, type, value)
+end
+
+local SubscriptionObserver = {}
+SubscriptionObserver.__index = SubscriptionObserver
+
+function SubscriptionObserver.new(subscription)
+	local self = setmetatable({}, SubscriptionObserver)
+	self._subscription = subscription
+	return self
+end
+
+function SubscriptionObserver:next(value)
+	onNotify(self._subscription, "next", value)
+end
+
+function SubscriptionObserver:error(value)
+	onNotify(self._subscription, "error", value)
+end
+
+function SubscriptionObserver:complete()
+	onNotify(self._subscription, "complete")
+end
+
+local Subscription = {}
+Subscription.__index = Subscription
+
+function Subscription.new(observer, subscriber)
+	local self = setmetatable({}, Subscription)
+	-- ASSERT: observer is an object
+	-- ASSERT: subscriber is callable
+	self._cleanup = nil
+	self._observer = observer
+	self._queue = nil
+	self._state = "initializing"
+
+	local subscriptionObserver = SubscriptionObserver.new(self)
+
+	local _status, _err = pcall(function()
+		self._cleanup = subscriber(subscriptionObserver)
+	end)
+	if _err ~= nil then
+		subscriptionObserver:error(_err)
+	end
+
+	if self._state == "initializing" then
+		self._state = "ready"
+	end
+
+	return self
+end
+
+function Subscription:unsubscribe()
+	if self._state ~= "closed" then
+		closeSubscription(self)
+		cleanupSubscription(self)
+	end
+end
+
 -- --[[ class Subscription {
-
---     constructor(observer, subscriber) {
---       // ASSERT: observer is an object
---       // ASSERT: subscriber is callable
-
---       this._cleanup = undefined;
---       this._observer = observer;
---       this._queue = undefined;
---       this._state = 'initializing';
-
---       let subscriptionObserver = new SubscriptionObserver(this);
-
---       try {
---         this._cleanup = subscriber.call(undefined, subscriptionObserver);
---       } catch (e) {
---         subscriptionObserver.error(e);
---       }
-
---       if (this._state === 'initializing')
---         this._state = 'ready';
---     }
 
 --     get closed() {
 --       return this._state === 'closed';
 --     }
 
---     unsubscribe() {
---       if (this._state !== 'closed') {
---         closeSubscription(this);
---         cleanupSubscription(this);
---       }
---     }
 --   } ]]
 -- error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ClassDeclaration ]]
+
 -- --[[ class SubscriptionObserver {
 --     constructor(subscription) { this._subscription = subscription }
 --     get closed() { return this._subscription._state === 'closed' }
@@ -206,20 +278,17 @@ function Observable.new(subscriber)
 	return self
 end
 
+function Observable:subscribe(observer, error, complete)
+	if typeof(observer) ~= "table" or observer == nil then
+		observer = { next = observer, error = error, complete = complete }
+	end
+
+	local subscription = Subscription.new(observer, self._subscriber)
+	return subscription
+end
+
 -- error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ExportNamedDeclaration ]]
 -- --[[ export class Observable {
-
---     subscribe(observer) {
---       if (typeof observer !== 'object' || observer === null) {
---         observer = {
---           next: observer,
---           error: arguments[1],
---           complete: arguments[2],
---         };
---       }
---       return new Subscription(observer, this._subscriber);
---     }
-
 --     forEach(fn) {
 --       return new Promise((resolve, reject) => {
 --         if (typeof fn !== 'function') {
