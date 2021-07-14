@@ -1,5 +1,6 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/src/Observable.js
-local rootWorkspace = script.Parent.Parent
+local srcWorkspace = script.Parent
+local rootWorkspace = srcWorkspace.Parent
 
 local LuauPolyfill = require(rootWorkspace.Dev.LuauPolyfill)
 local Promise = require(rootWorkspace.Dev.Promise)
@@ -278,6 +279,30 @@ function Observable.new(subscriber)
 	return self
 end
 
+function Observable:of(...)
+	local items = table.pack(...)
+	local C
+	if typeof(self) == "function" then
+		C = self
+	else
+		C = Observable.new
+	end
+	return C(function(observer)
+		enqueue(function()
+			if observer.closed then
+				return
+			end
+			for _, item in ipairs(items) do
+				observer:next(item)
+				if observer.closed then
+					return
+				end
+			end
+			observer:complete()
+		end)
+	end)
+end
+
 function Observable:subscribe(observer, error, complete)
 	if typeof(observer) ~= "table" or observer == nil then
 		observer = { next = observer, error = error, complete = complete }
@@ -515,21 +540,6 @@ end
 --       }
 
 --       throw new TypeError(x + ' is not observable');
---     }
-
---     static of(...items) {
---       let C = typeof this === 'function' ? this : Observable;
-
---       return new C(observer => {
---         enqueue(() => {
---           if (observer.closed) return;
---           for (let i = 0; i < items.length; ++i) {
---             observer.next(items[i]);
---             if (observer.closed) return;
---           }
---           observer.complete();
---         });
---       });
 --     }
 
 --     static get [SymbolSpecies]() { return this }
