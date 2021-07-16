@@ -160,7 +160,7 @@ local function flushSubscription(subscription)
 	subscription._queue = nil
 	subscription._state = "ready"
 
-	for i = 1, table.getn(queue), 1 do
+	for i = 1, #queue, 1 do
 		notifySubscription(subscription, queue[i].type, queue[i].value)
 		if subscription._state == "closed" then
 			break
