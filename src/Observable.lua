@@ -1,4 +1,6 @@
--- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/src/Observable.js
+-- ROBLOX upstream: https://github.com/zenparsing/zen-observable/blob/v0.8.15/src/Observable.js
+-- ROBLOX upstream for types: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/zen-observable/index.d.ts
+
 local srcWorkspace = script.Parent
 local rootWorkspace = srcWorkspace.Parent
 
@@ -188,6 +190,8 @@ local function onNotify(subscription, type, value)
 	notifySubscription(subscription, type, value)
 end
 
+type SubscriptionObserver<T> = { closed: boolean, next: (value: T) -> (), error: (error: any) -> (), complete: () -> () }
+
 local SubscriptionObserver = {}
 SubscriptionObserver.__index = SubscriptionObserver
 
@@ -209,10 +213,24 @@ function SubscriptionObserver:complete()
 	onNotify(self._subscription, "complete")
 end
 
+type Observer<T> = {
+	start: ((subscription: Subscription) -> any)?,
+	next: ((value: T) -> ())?,
+	error: ((error: any) -> ())?,
+	complete: (() -> ())?,
+}
+type Subscriber<T> = (SubscriptionObserver<T>) -> () | () -> () | Subscription
+
+export type Subscription = {
+	new: (observer: Observer<T>, subscriber: Subscriber<T>) -> Subscription,
+	closed: boolean,
+	unsubscribe: () -> (),
+}
+
 local Subscription = {}
 Subscription.__index = Subscription
 
-function Subscription.new(observer, subscriber)
+function Subscription.new(observer: Observer<T>, subscriber: Subscriber<T>): Subscription
 	local self = setmetatable({}, Subscription)
 	-- ASSERT: observer is an object
 	-- ASSERT: subscriber is callable
@@ -260,6 +278,12 @@ end
 --     error(value) { onNotify(this._subscription, 'error', value) }
 --     complete() { onNotify(this._subscription, 'complete') }
 --   } ]]
+
+export type Observable<T> = {
+	new: (subscriber: Subscriber<T>) -> Observable<T>,
+	of: (...any) -> Observable<T>,
+	subscribe: (observer: Observer<T>) -> Subscription,
+}
 
 local Observable = {}
 Observable.__index = Observable
