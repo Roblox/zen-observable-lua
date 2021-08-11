@@ -1,4 +1,5 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/of.js
+
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
 
@@ -31,7 +32,7 @@ return function()
 			jestExpect(result.__index).toBe(Observable.__index)
 		end)
 
-		it("delivers arguments to next in a job", function(done)
+		it("delivers arguments to next in a job", function()
 			local values = {}
 			Observable:of(1, 2, 3, 4):subscribe(function(self, v)
 				table.insert(values, v)

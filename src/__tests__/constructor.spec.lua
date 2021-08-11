@@ -1,4 +1,6 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/constructor.js
+--!nonstrict
+
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
 

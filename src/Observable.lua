@@ -1,5 +1,6 @@
 -- ROBLOX upstream: https://github.com/zenparsing/zen-observable/blob/v0.8.15/src/Observable.js
 -- ROBLOX upstream for types: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/zen-observable/index.d.ts
+--!nonstrict
 
 local srcWorkspace = script.Parent
 local rootWorkspace = srcWorkspace.Parent
@@ -9,6 +10,9 @@ local Promise = require(rootWorkspace.Dev.Promise)
 local instanceOf = LuauPolyfill.instanceof
 local Boolean = LuauPolyfill.Boolean
 local setTimeout = LuauPolyfill.setTimeout
+
+type Function = () -> ()
+type AnyFunction = (...any) -> ()
 
 -- ROBLOX TODO: There isn't yet a need to convert the majority of this code.
 --              The Apollo Client conversion only needs the Observable class,
@@ -62,10 +66,10 @@ end
 -- end
 
 -- ROBLOX upstream deviation: hostReportError.log, lua functions does not support having other properties, so using setmetatable with __call enables to suppport this
-local hostReportError
+local hostReportError: any
 hostReportError = setmetatable({}, {
 	__call = function(e)
-		if Boolean.toJSBoolean(hostReportError.log) then
+		if hostReportError.log then
 			hostReportError:log(e)
 		else
 			setTimeout(function()
@@ -77,9 +81,7 @@ hostReportError = setmetatable({}, {
 
 local function enqueue(fn)
 	Promise.delay(0):doneCall(function()
-		local _status, _err = pcall(function()
-			fn()
-		end)
+		local _status, _err = pcall(fn)
 		if _err ~= nil then
 			hostReportError(_err)
 		end
@@ -87,7 +89,7 @@ local function enqueue(fn)
 end
 
 local function cleanupSubscription(subscription)
-	local cleanup = subscription._cleanup
+	local cleanup: Function? = subscription._cleanup
 	if cleanup == nil then
 		return
 	end
@@ -100,13 +102,14 @@ local function cleanupSubscription(subscription)
 
 	local ok, err = pcall(function()
 		if typeof(cleanup) == "function" then
-			cleanup()
+			(cleanup :: Function)()
 		else
 			local unsubscribe = getMethod(cleanup, "unsubscribe")
-			if Boolean.toJSBoolean(unsubscribe) then
+			if unsubscribe then
 				unsubscribe(cleanup)
 			end
 		end
+		return
 	end)
 	if not ok then
 		hostReportError(err)
@@ -190,7 +193,12 @@ local function onNotify(subscription, type, value)
 	notifySubscription(subscription, type, value)
 end
 
-type SubscriptionObserver<T> = { closed: boolean, next: (value: T) -> (), error: (error: any) -> (), complete: () -> () }
+type SubscriptionObserver<T> = {
+	closed: boolean,
+	next: (value: T) -> (),
+	error: (error: any) -> (),
+	complete: Function,
+}
 
 local SubscriptionObserver = {}
 SubscriptionObserver.__index = SubscriptionObserver
@@ -214,23 +222,24 @@ function SubscriptionObserver:complete()
 end
 
 type Observer<T> = {
-	start: ((subscription: Subscription) -> any)?,
+	start: ((subscription: Subscription<T>) -> any)?,
 	next: ((value: T) -> ())?,
-	error: ((error: any) -> ())?,
-	complete: (() -> ())?,
+	error: ((errorValue: any) -> ())?,
+	complete: (Function)?,
 }
-type Subscriber<T> = (SubscriptionObserver<T>) -> () | () -> () | Subscription
+-- ROBLOX deviation: This appears to be a mistake in DefinitelyTyped
+type Subscriber<T> = (SubscriptionObserver<T>) -> () | Function -- | Subscription<T>
 
-export type Subscription = {
-	new: (observer: Observer<T>, subscriber: Subscriber<T>) -> Subscription,
+export type Subscription<T> = {
+	new: (observer: Observer<T>, subscriber: Subscriber<T>) -> Subscription<T>,
 	closed: boolean,
-	unsubscribe: () -> (),
+	unsubscribe: Function,
 }
 
 local Subscription = {}
 Subscription.__index = Subscription
 
-function Subscription.new(observer: Observer<T>, subscriber: Subscriber<T>): Subscription
+function Subscription.new(observer: Observer<any>, subscriber: Subscriber<any>): Subscription<any>
 	local self = setmetatable({}, Subscription)
 	-- ASSERT: observer is an object
 	-- ASSERT: subscriber is callable
@@ -242,7 +251,7 @@ function Subscription.new(observer: Observer<T>, subscriber: Subscriber<T>): Sub
 	local subscriptionObserver = SubscriptionObserver.new(self)
 
 	local _status, _err = pcall(function()
-		self._cleanup = subscriber(subscriptionObserver)
+		self._cleanup = (subscriber :: AnyFunction)(subscriptionObserver)
 	end)
 	if _err ~= nil then
 		subscriptionObserver:error(_err)
@@ -282,7 +291,7 @@ end
 export type Observable<T> = {
 	new: (subscriber: Subscriber<T>) -> Observable<T>,
 	of: (...any) -> Observable<T>,
-	subscribe: (observer: Observer<T>) -> Subscription,
+	subscribe: (observer: Observer<T>) -> Subscription<T>,
 }
 
 local Observable = {}
