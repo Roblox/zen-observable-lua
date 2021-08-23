@@ -8,7 +8,7 @@ local jestExpect = JestRoblox.Globals.expect
 local ObservableModule = require(srcWorkspace.Observable)
 local Observable = ObservableModule.Observable
 
-local Promise = require(rootWorkspace.Dev.Promise)
+local Promise = require(rootWorkspace.Promise)
 
 return function()
 	describe("subscribe", function()

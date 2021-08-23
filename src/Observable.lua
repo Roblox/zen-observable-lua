@@ -5,8 +5,8 @@
 local srcWorkspace = script.Parent
 local rootWorkspace = srcWorkspace.Parent
 
-local LuauPolyfill = require(rootWorkspace.Dev.LuauPolyfill)
-local Promise = require(rootWorkspace.Dev.Promise)
+local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
+local Promise = require(rootWorkspace.Promise)
 local instanceOf = LuauPolyfill.instanceof
 local Boolean = LuauPolyfill.Boolean
 local setTimeout = LuauPolyfill.setTimeout
@@ -221,14 +221,14 @@ function SubscriptionObserver:complete()
 	onNotify(self._subscription, "complete")
 end
 
-type Observer<T> = {
+export type Observer<T> = {
 	start: ((subscription: Subscription<T>) -> any)?,
 	next: ((value: T) -> ())?,
 	error: ((errorValue: any) -> ())?,
 	complete: (Function)?,
 }
 -- ROBLOX deviation: This appears to be a mistake in DefinitelyTyped
-type Subscriber<T> = (SubscriptionObserver<T>) -> () | Function -- | Subscription<T>
+export type Subscriber<T> = (SubscriptionObserver<T>) -> () | Function -- | Subscription<T>
 
 export type Subscription<T> = {
 	new: (observer: Observer<T>, subscriber: Subscriber<T>) -> Subscription<T>,

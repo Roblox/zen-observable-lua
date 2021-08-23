@@ -6,7 +6,7 @@ local rootWorkspace = srcWorkspace.Parent
 local JestRoblox = require(rootWorkspace.Dev.JestRoblox)
 local jestExpect = JestRoblox.Globals.expect
 
-local Promise = require(rootWorkspace.Dev.Promise)
+local Promise = require(rootWorkspace.Promise)
 
 local ObservableModule = require(srcWorkspace.Observable)
 local Observable = ObservableModule.Observable
