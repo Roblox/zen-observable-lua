@@ -1,5 +1,4 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/constructor.js
---!nonstrict
 
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
@@ -8,7 +7,7 @@ local JestRoblox = require(rootWorkspace.Dev.JestRoblox)
 local jestExpect = JestRoblox.Globals.expect
 
 local ObservableModule = require(srcWorkspace.Observable)
-local Observable = ObservableModule.Observable
+local Observable: any = ObservableModule.Observable
 
 return function()
 	describe("constructor", function()
