@@ -232,7 +232,7 @@ export type Subscriber<T> = (SubscriptionObserver<T>) -> () | Function -- | Subs
 export type Subscription<T> = {
 	new: (observer: Observer<T>, subscriber: Subscriber<T>) -> Subscription<T>,
 	closed: boolean,
-	unsubscribe: Function,
+	unsubscribe: (self: Subscription<T>) -> (),
 }
 
 local Subscription = {}
