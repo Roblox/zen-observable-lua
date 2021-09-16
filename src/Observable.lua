@@ -81,10 +81,9 @@ hostReportError = setmetatable({}, {
 
 local function enqueue(fn)
 	Promise.delay(0):doneCall(function()
-		local _status, _err = pcall(fn)
-		if _err ~= nil then
-			hostReportError(_err)
-		end
+		xpcall(fn, function(err)
+			hostReportError(err)
+		end)
 	end)
 end
 
@@ -289,11 +288,7 @@ end
 --     complete() { onNotify(this._subscription, 'complete') }
 --   } ]]
 
-export type Observable<T> = {
-	new: (subscriber: Subscriber<T>) -> Observable<T>,
-	of: (...any) -> Observable<T>,
-	subscribe: (observer: Observer<T>) -> Subscription<T>,
-}
+export type Observable<T> = { subscribe: (self: Observable<T>, observer: Observer<T>) -> Subscription<T> }
 
 local Observable = {}
 Observable.__index = Observable
@@ -313,15 +308,11 @@ function Observable.new(subscriber)
 	return self
 end
 
-function Observable:of(...)
+function Observable.of(...)
 	local items = table.pack(...)
-	local C
-	if typeof(self) == "function" then
-		C = self
-	else
-		C = Observable.new
-	end
-	return C(function(observer)
+	-- ROBLOX deviation: dropping support for overriding `this``
+
+	return Observable.new(function(observer)
 		enqueue(function()
 			if observer.closed then
 				return
@@ -337,9 +328,9 @@ function Observable:of(...)
 	end)
 end
 
-function Observable:subscribe(observer, error, complete)
+function Observable:subscribe(observer, error_, complete)
 	if typeof(observer) ~= "table" or observer == nil then
-		observer = { next = observer, error = error, complete = complete }
+		observer = { next = observer, error = error_, complete = complete }
 	end
 
 	local subscription = Subscription.new(observer, self._subscriber)
