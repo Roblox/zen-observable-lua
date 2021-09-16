@@ -9,4 +9,4 @@ LuauPolyfill = "github.com/roblox/luau-polyfill@0.2.1"
 Promise = "github.com/evaera/roblox-lua-promise@3.1.0"
 
 [dev_dependencies]
-JestRoblox = "github.com/roblox/jest-roblox@2.0.1"
+JestGlobals = "github.com/roblox/jest-roblox@2.1.1"

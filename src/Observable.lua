@@ -178,7 +178,7 @@ local function onNotify(subscription, type, value)
 		return
 	end
 	if subscription._state == "buffering" then
-		subscription._queue:push({ type = type, value = value })
+		table.insert(subscription._queue, { type = type, value = value })
 		return
 	end
 	if subscription._state ~= "ready" then
@@ -250,10 +250,11 @@ function Subscription.new(observer: Observer<any>, subscriber: Subscriber<any>):
 
 	local subscriptionObserver = SubscriptionObserver.new(self)
 
-	local _status, _err = pcall(function()
+	local ok, _err = pcall(function()
 		self._cleanup = (subscriber :: AnyFunction)(subscriptionObserver)
 	end)
-	if _err ~= nil then
+
+	if ok == false then
 		subscriptionObserver:error(_err)
 	end
 

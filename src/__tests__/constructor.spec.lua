@@ -3,8 +3,8 @@
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
 
-local JestRoblox = require(rootWorkspace.Dev.JestRoblox)
-local jestExpect = JestRoblox.Globals.expect
+local JestGlobals = require(rootWorkspace.Dev.JestGlobals)
+local jestExpect = JestGlobals.expect
 
 local ObservableModule = require(srcWorkspace.Observable)
 local Observable: any = ObservableModule.Observable
