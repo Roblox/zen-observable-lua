@@ -222,9 +222,9 @@ end
 
 export type Observer<T> = {
 	start: ((subscription: Subscription<T>) -> any)?,
-	next: ((value: T) -> ())?,
-	error: ((errorValue: any) -> ())?,
-	complete: (Function)?,
+	next: ((self: Observer<T>, value: T) -> ())?,
+	error: ((self: Observer<T>, errorValue: any) -> ())?,
+	complete: ((self: Observer<T>) -> ())?,
 }
 -- ROBLOX deviation: This appears to be a mistake in DefinitelyTyped
 export type Subscriber<T> = (SubscriptionObserver<T>) -> () | Function -- | Subscription<T>
