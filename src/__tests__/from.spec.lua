@@ -1,0 +1,129 @@
+-- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/from.js
+
+local srcWorkspace = script.Parent.Parent
+local rootWorkspace = srcWorkspace.Parent
+
+local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
+type Array<T> = LuauPolyfill.Array<T>
+type Record<T, U> = { [T]: U }
+
+local Promise = require(rootWorkspace.Promise)
+
+local JestGlobals = require(rootWorkspace.Dev.JestGlobals)
+local jestExpect = JestGlobals.expect
+
+local ObservableModule = require(srcWorkspace.Observable)
+local Observable = ObservableModule.Observable
+
+return function()
+	describe("from", function()
+		-- local iterable = {[tostring(Symbol.iterator)] = function(self)
+		-- error("not implemented") --[[ ROBLOX TODO: Unhandled node for type: YieldExpression ]]
+		--  --[[ yield 1 ]];
+		-- error("not implemented") --[[ ROBLOX TODO: Unhandled node for type: YieldExpression ]]
+		--  --[[ yield 2 ]];
+		-- error("not implemented") --[[ ROBLOX TODO: Unhandled node for type: YieldExpression ]]
+		--  --[[ yield 3 ]];
+		-- end}
+		-- ROBLOX deviation: prototype not available, we just check that method exists
+		it("is a method on Observable", function()
+			jestExpect(function()
+				Observable.from({ "a-string" })
+			end).never.toThrowError()
+		end)
+
+		it("throws if the argument is null", function()
+			jestExpect(function()
+				Observable.from(nil)
+			end).toThrowError()
+		end)
+		it("throws if the argument is undefined", function()
+			jestExpect(function()
+				Observable.from(nil)
+			end).toThrowError()
+		end)
+
+		it("throws if the argument is not observable or iterable", function()
+			jestExpect(function()
+				-- ROBLOX deviation: table needs key/value to differentiate from empty Array
+				return Observable.from({ key = "value" })
+			end).toThrowError()
+		end)
+		-- describe("observables", function()
+		-- it("returns the input if the constructor matches \"this\"", function()
+		-- local function ctor() end
+		-- local observable = Observable.new(function() end)
+		-- observable.constructor = ctor;
+		-- assert:equal(Observable.from:call(ctor, observable), observable);
+		-- end);
+		-- it("wraps the input if it is not an instance of Observable", function()
+		-- local obj = {["constructor"] = Observable, [tostring(Symbol.observable)] = function(self)
+		-- return self
+		-- end}
+		-- assert:ok(Observable:from(obj) ~= obj);
+		-- end);
+		-- it("throws if @@observable property is not a method", function()
+		-- assert:throws(function()
+		-- return Observable:from({[tostring(Symbol.observable)] = 1})
+		-- end);
+		-- end);
+		-- it("returns an observable wrapping @@observable result", function()
+		-- local inner = {subscribe = function(self, x)
+		-- observer = x;
+		-- return function()
+		-- cleanupCalled = true;
+		-- end
+		-- end}
+		-- local observer
+		-- local cleanupCalled = true
+		-- local observable = Observable:from({[tostring(Symbol.observable)] = function(self)
+		-- return inner
+		-- end})
+		-- observable:subscribe();
+		-- assert:equal(typeof(observer.next), "function");
+		-- observer:complete();
+		-- assert:equal(cleanupCalled, true);
+		-- end);
+		-- end);
+		describe("iterables", function()
+			-- it("throws if @@iterator is not a method", function()
+			-- assert:throws(function()
+			-- return Observable:from({[tostring(Symbol.iterator)] = 1})
+			-- end);
+			-- end);
+			-- it("returns an observable wrapping iterables", function()
+			-- local calls = {}
+			-- local subscription = Observable:from(iterable):subscribe({next = function(self, v)
+			-- calls:push({"next", v});
+			-- end, complete = function(self)
+			-- calls:push({"complete"});
+			-- end})
+			-- assert:deepEqual(calls, {});
+			-- error("not implemented") --[[ ROBLOX TODO: Unhandled node for type: AwaitExpression ]]
+			--  --[[ await null ]];
+			-- assert:deepEqual(calls, {{"next", 1}, {"next", 2}, {"next", 3}, {"complete"}});
+			-- end);
+
+			-- ROBLOX comment: not present upstream
+			it("returns an observable wrapping Array", function()
+				local calls = {}
+				local _subscription = Observable.from({ 1, 2, 3 }):subscribe({
+					next = function(self, v: number)
+						table.insert(calls, { "next", v :: any })
+					end,
+					complete = function(self)
+						table.insert(calls, { "complete" })
+					end,
+				})
+				jestExpect(calls).toEqual({})
+				Promise.delay(0):expect()
+				jestExpect(calls).toEqual({
+					{ "next", 1 :: any },
+					{ "next", 2 :: any },
+					{ "next", 3 :: any },
+					{ "complete" },
+				})
+			end)
+		end)
+	end)
+end

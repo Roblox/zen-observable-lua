@@ -9,7 +9,11 @@ local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 local Promise = require(rootWorkspace.Promise)
 local instanceOf = LuauPolyfill.instanceof
 local Boolean = LuauPolyfill.Boolean
+local Error = LuauPolyfill.Error
 local setTimeout = LuauPolyfill.setTimeout
+local Array = LuauPolyfill.Array
+
+type Promise<T> = LuauPolyfill.Promise<T> & { expect: (self: Promise<T>) -> T }
 
 type Function = () -> ()
 type AnyFunction = (...any) -> ()
@@ -68,7 +72,7 @@ end
 -- ROBLOX upstream deviation: hostReportError.log, lua functions does not support having other properties, so using setmetatable with __call enables to suppport this
 local hostReportError: any
 hostReportError = setmetatable({}, {
-	__call = function(e)
+	__call = function(_self, e)
 		if hostReportError.log then
 			hostReportError:log(e)
 		else
@@ -139,6 +143,7 @@ local function notifySubscription(subscription, type, value)
 				error(value)
 			end
 		elseif type == "complete" then
+			closeSubscription(subscription)
 			if Boolean.toJSBoolean(m) then
 				m(observer, value)
 			end
@@ -200,7 +205,24 @@ type SubscriptionObserver<T> = {
 }
 
 local SubscriptionObserver = {}
-SubscriptionObserver.__index = SubscriptionObserver
+SubscriptionObserver.__index = function(t, k)
+	if k == "closed" then
+		return t._subscription._state == "closed"
+	end
+	if rawget(t, k) then
+		return rawget(t, k)
+	end
+	if rawget(SubscriptionObserver, k) then
+		return rawget(SubscriptionObserver, k)
+	end
+	return nil
+end
+SubscriptionObserver.__newindex = function(t, k, v)
+	if k == "closed" then
+		error("setting getter-only property 'closed'")
+	end
+	rawset(t, k, v)
+end
 
 function SubscriptionObserver.new(subscription)
 	local self = setmetatable({}, SubscriptionObserver)
@@ -288,7 +310,11 @@ end
 --     complete() { onNotify(this._subscription, 'complete') }
 --   } ]]
 
-export type Observable<T> = { subscribe: (self: Observable<T>, observer: Observer<T>) -> Subscription<T> }
+export type Observable<T> = {
+	subscribe: (self: Observable<T>, observer: Observer<T>) -> Subscription<T>,
+	map: (self: Observable<T>, fn: ((value: T) -> any)) -> Observable<any>,
+	forEach: (self: Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<any>,
+}
 
 local Observable = {}
 Observable.__index = Observable
@@ -338,50 +364,71 @@ function Observable:subscribe(observer, error_, complete)
 end
 
 -- error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ExportNamedDeclaration ]]
--- --[[ export class Observable {
---     forEach(fn) {
---       return new Promise((resolve, reject) => {
---         if (typeof fn !== 'function') {
---           reject(new TypeError(fn + ' is not a function'));
---           return;
---         }
 
---         function done() {
---           subscription.unsubscribe();
---           resolve();
---         }
+function Observable:forEach(fn: (value: any, cancel: (() -> ())?) -> ...any)
+	return Promise.new(function(resolve, reject)
+		if typeof(fn) ~= "function" then
+			--ROBLOX deviation: using Error instead of TypeError
+			reject(Error.new(tostring(fn) .. " is not a function"))
+			return
+		end
 
---         let subscription = this.subscribe({
---           next(value) {
---             try {
---               fn(value, done);
---             } catch (e) {
---               reject(e);
---               subscription.unsubscribe();
---             }
---           },
---           error: reject,
---           complete: resolve,
---         });
---       });
---     }
+		--ROBLOX deviation: predefine variable
+		local subscription
+		local function done()
+			subscription:unsubscribe()
+			resolve()
+		end
 
---     map(fn) {
---       if (typeof fn !== 'function')
---         throw new TypeError(fn + ' is not a function');
+		subscription = self:subscribe({
+			next = function(_self, value)
+				local ok, result = pcall(function()
+					fn(value, done)
+				end)
 
---       let C = getSpecies(this);
+				if not ok then
+					reject(result)
+					subscription:unsubscribe()
+				end
+			end,
+			error = function(_self, e)
+				reject(e)
+			end,
+			complete = function(_self)
+				resolve()
+			end,
+		})
+	end)
+end
 
---       return new C(observer => this.subscribe({
---         next(value) {
---           try { value = fn(value) }
---           catch (e) { return observer.error(e) }
---           observer.next(value);
---         },
---         error(e) { observer.error(e) },
---         complete() { observer.complete() },
---       }));
---     }
+function Observable:map(fn: (value: any) -> any)
+	if typeof(fn) ~= "function" then
+		--ROBLOX deviation: useng Error instead of TypeError
+		error(Error.new(tostring(fn) .. " is not a function"))
+	end
+	--ROBLOX deviation: using Observable.new exclusively
+	return Observable.new(function(observer)
+		return self:subscribe({
+			next = function(_self, value)
+				--[[ ROBLOX COMMENT: try-catch block conversion ]]
+				local ok, result = pcall(function()
+					value = fn(value)
+				end)
+				if not ok then
+					return observer:error(result)
+				end
+				observer:next(value)
+				return nil
+			end,
+			error = function(_self, e)
+				observer:error(e)
+			end,
+			complete = function(_self)
+				observer:complete()
+			end,
+		})
+	end)
+end
 
 --     filter(fn) {
 --       if (typeof fn !== 'function')
@@ -516,56 +563,63 @@ end
 
 --     [SymbolObservable]() { return this }
 
---     static from(x) {
---       let C = typeof this === 'function' ? this : Observable;
+function Observable.from(x): Observable<any>
+	-- ROBLOX deviation: adding limited support (Array), Symbols not applicable
+	-- let C = typeof this === 'function' ? this : Observable;
 
---       if (x == null)
---         throw new TypeError(x + ' is not an object');
+	-- 	if (x == null)
+	-- 	  throw new TypeError(x + ' is not an object');
 
---       let method = getMethod(x, SymbolObservable);
---       if (method) {
---         let observable = method.call(x);
+	-- 	let method = getMethod(x, SymbolObservable);
+	-- 	if (method) {
+	-- 	  let observable = method.call(x);
 
---         if (Object(observable) !== observable)
---           throw new TypeError(observable + ' is not an object');
+	-- 	  if (Object(observable) !== observable)
+	-- 		throw new TypeError(observable + ' is not an object');
 
---         if (isObservable(observable) && observable.constructor === C)
---           return observable;
+	-- 	  if (isObservable(observable) && observable.constructor === C)
+	-- 		return observable;
 
---         return new C(observer => observable.subscribe(observer));
---       }
+	-- 	  return new C(observer => observable.subscribe(observer));
+	-- 	}
 
---       if (hasSymbol('iterator')) {
---         method = getMethod(x, SymbolIterator);
---         if (method) {
---           return new C(observer => {
---             enqueue(() => {
---               if (observer.closed) return;
---               for (let item of method.call(x)) {
---                 observer.next(item);
---                 if (observer.closed) return;
---               }
---               observer.complete();
---             });
---           });
---         }
---       }
+	-- 	if (hasSymbol('iterator')) {
+	-- 	  method = getMethod(x, SymbolIterator);
+	-- 	  if (method) {
+	-- 		return new C(observer => {
+	-- 		  enqueue(() => {
+	-- 			if (observer.closed) return;
+	-- 			for (let item of method.call(x)) {
+	-- 			  observer.next(item);
+	-- 			  if (observer.closed) return;
+	-- 			}
+	-- 			observer.complete();
+	-- 		  });
+	-- 		});
+	-- 	  }
+	-- 	}
 
---       if (Array.isArray(x)) {
---         return new C(observer => {
---           enqueue(() => {
---             if (observer.closed) return;
---             for (let i = 0; i < x.length; ++i) {
---               observer.next(x[i]);
---               if (observer.closed) return;
---             }
---             observer.complete();
---           });
---         });
---       }
+	if Array.isArray(x) then
+		return Observable.new(function(observer)
+			enqueue(function()
+				if observer.closed then
+					return
+				end
+				for _, item in pairs(x) do
+					observer:next(item)
+					if observer.closed then
+						return
+					end
+				end
 
---       throw new TypeError(x + ' is not observable');
---     }
+				observer:complete()
+			end)
+		end)
+	end
+
+	--ROBLOX deviation: using Error instead of TypeError
+	error(Error.new(tostring(x) .. " is not observable"))
+end
 
 --     static get [SymbolSpecies]() { return this }
 
