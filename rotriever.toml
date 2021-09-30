@@ -1,6 +1,6 @@
 [package]
 name = "ZenObservable"
-version = "0.8.15-rc.5"
+version = "0.8.15-rc.6"
 author = "Roblox"
 content_root = "src"
 
