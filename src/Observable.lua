@@ -14,6 +14,7 @@ local setTimeout = LuauPolyfill.setTimeout
 local Array = LuauPolyfill.Array
 local Symbol = LuauPolyfill.Symbol
 type Object = LuauPolyfill.Object
+type Array<T> = LuauPolyfill.Array<T>
 
 type Promise<T> = LuauPolyfill.Promise<T> & { expect: (self: Promise<T>) -> T }
 
@@ -69,11 +70,12 @@ local _SymbolIterator = getSymbol("iterator")
 local SymbolObservable = getSymbol("observable")
 local SymbolSpecies = getSymbol("species")
 
-local function getMethod(obj, key)
+local function getMethod(obj: Object, key): Function | nil
 	local value = obj[key]
 	if value == nil then
 		return nil
 	end
+	--ROBLOX deviation: check for function and callable tables
 	if not isCallable(value) then
 		-- ROBLOX deviation: using Error instead of TypeError
 		error(Error.new(tostring(value) .. " is not a function"))
@@ -117,28 +119,28 @@ local function enqueue(fn)
 	end)
 end
 
-local function cleanupSubscription(subscription)
-	local cleanup: Function? = subscription._cleanup
+local function cleanupSubscription(subscription: Subscription<any>)
+	local cleanup = subscription._cleanup
 	if cleanup == nil then
 		return
 	end
 
 	subscription._cleanup = nil
 
-	if not Boolean.toJSBoolean(cleanup) then
+	if not cleanup then
 		return
 	end
 
 	local ok, err = pcall(function()
-		if typeof(cleanup) == "function" then
-			(cleanup :: Function)()
+		-- ROBLOX deviation: check for functions and callable tables
+		if isCallable(cleanup) then
+			cleanup()
 		else
 			local unsubscribe = getMethod(cleanup, "unsubscribe")
 			if unsubscribe then
 				unsubscribe(cleanup)
 			end
 		end
-		return
 	end)
 	if not ok then
 		hostReportError(err)
@@ -175,19 +177,19 @@ function notifySubscription(subscription, type, value)
 	local ok, err = pcall(function()
 		local m = getMethod(observer, type)
 		if type == "next" then
-			if Boolean.toJSBoolean(m) then
+			if m then
 				m(observer, value)
 			end
 		elseif type == "error" then
 			closeSubscription(subscription)
-			if Boolean.toJSBoolean(m) then
+			if m then
 				m(observer, value)
 			else
 				error(value)
 			end
 		elseif type == "complete" then
 			closeSubscription(subscription)
-			if Boolean.toJSBoolean(m) then
+			if m then
 				m(observer, value)
 			end
 		end
@@ -203,7 +205,7 @@ function notifySubscription(subscription, type, value)
 	end
 end
 
-local function onNotify(subscription, type, value)
+local function onNotify(subscription, type, value: any?)
 	if subscription._state == "closed" then
 		return
 	end
@@ -230,12 +232,15 @@ export type Observer<T> = {
 	complete: ((self: Observer<T>) -> ())?,
 }
 -- ROBLOX deviation: This appears to be a mistake in DefinitelyTyped
-export type Subscriber<T> = (SubscriptionObserver<T>) -> () | Function -- | Subscription<T>
+export type Subscriber<T> = (SubscriptionObserver<T>) -> () | (() -> ()) -- | Subscription<T>
 
 export type Subscription<T> = {
-	new: (observer: Observer<T>, subscriber: Subscriber<T>) -> Subscription<T>,
 	closed: boolean,
 	unsubscribe: (self: Subscription<T>) -> (),
+	_state: string?,
+	_queue: Array<any>?,
+	_cleanup: Function | Object | nil,
+	_observer: Object, -- ROBLOX FIXME: avoid pitfall of recursive type with differing args check, revisit after https://jira.rbx.com/browse/CLI-47160
 }
 
 local Subscription = {}
@@ -267,7 +272,7 @@ function Subscription.new(observer: Observer<any>, subscriber: Subscriber<any>):
 	self._queue = nil
 	self._state = "initializing"
 
-	local subscriptionObserver = SubscriptionObserver.new(self)
+	local subscriptionObserver = SubscriptionObserver.new(self :: any)
 
 	local ok, _err = pcall(function()
 		self._cleanup = (subscriber :: Function)(subscriptionObserver)
@@ -296,6 +301,7 @@ type SubscriptionObserver<T> = {
 	next: (self: SubscriptionObserver<T>, value: T) -> (),
 	error: (self: SubscriptionObserver<T>, error: any) -> (),
 	complete: (self: SubscriptionObserver<T>) -> (),
+	_subscription: Subscription<any>,
 }
 
 SubscriptionObserver = {}
@@ -303,13 +309,10 @@ SubscriptionObserver.__index = function(t, k)
 	if k == "closed" then
 		return t._subscription._state == "closed"
 	end
-	if rawget(t, k) then
-		return rawget(t, k)
-	end
 	if rawget(SubscriptionObserver, k) then
 		return rawget(SubscriptionObserver, k)
 	end
-	return nil
+	return rawget(t, k)
 end
 SubscriptionObserver.__newindex = function(t, k, v)
 	if k == "closed" then
@@ -318,7 +321,7 @@ SubscriptionObserver.__newindex = function(t, k, v)
 	rawset(t, k, v)
 end
 
-function SubscriptionObserver.new(subscription)
+function SubscriptionObserver.new(subscription: Subscription<any>)
 	local self = setmetatable({}, SubscriptionObserver)
 	self._subscription = subscription
 	return self
@@ -339,24 +342,37 @@ end
 type ObservableLike<T> = {
 	subscribe: (self: ObservableLike<T>) -> (Subscriber<T> | nil)?,
 }
-
+-- ROBLOX FIXME: this is a workaround for the 'recursive type with different args' error, remove this once that's fixed
+type _Observable<T> = {
+	subscribe: (self: _Observable<T>, observer: Observer<T>) -> Subscription<T>,
+	map: (self: _Observable<T>, fn: ((value: T) -> R_)) -> any,
+	forEach: (self: _Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<nil>,
+	flatMap: (self: _Observable<T>, callback: (value: T) -> ObservableLike<R_>) -> any,
+	concat: (self: _Observable<T>, ...any) -> any,
+	reduce: (
+		self: _Observable<T>,
+		callback: (previousValue: R_, currentValue: T) -> R_,
+		initialValue: R_?
+	) -> any,
+	filter: (self: _Observable<T>, callback: (value: T) -> boolean) -> any,
+}
 export type Observable<T> = {
 	subscribe: (self: Observable<T>, observer: Observer<T>) -> Subscription<T>,
 	-- ROBLOX TODO: function generics: map<R>(callback: (value: T) => R): Observable<R>
-	map: (self: Observable<T>, fn: ((value: T) -> R_)) -> Observable<R_>,
-	forEach: (self: Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<any>,
+	map: (self: Observable<T>, fn: ((value: T) -> R_)) -> _Observable<R_>,
+	forEach: (self: Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<nil>,
 	-- ROBLOX TODO: function generics: flatMap<R>(callback: (value: T) => ZenObservable.ObservableLike<R>): Observable<R>;
-	flatMap: (self: Observable<T>, callback: (value: T) -> ObservableLike<R_>) -> Observable<R_>,
+	flatMap: (self: Observable<T>, callback: (value: T) -> ObservableLike<R_>) -> _Observable<R_>,
 	-- ROBLOX TODO: function generics: concat<R>(...observable: Array<Observable<R>>): Observable<R>;
-	concat: (self: Observable<T>, ...Observable<R_>) -> Observable<R_>,
+	concat: (self: Observable<T>, ..._Observable<R_>) -> _Observable<R_>,
 	-- ROBLOX TODO: function generics: reduce<R>(callback: (previousValue: R, currentValue: T) => R, initialValue?: R): Observable<R>;
 	reduce: (
 		self: Observable<T>,
 		callback: (previousValue: R_, currentValue: T) -> R_,
 		initialValue: R_?
-	) -> Observable<R_>,
+	) -> _Observable<R_>,
 	-- ROBLOX TODO: function generics:  filter<S extends T>(callback: (value: T) => value is S): Observable<S>;
-	filter: (self: Observable<T>, callback: (value: T) -> boolean) -> Observable<S_>,
+	filter: (self: Observable<T>, callback: (value: T) -> boolean) -> _Observable<S_>,
 }
 
 Observable = {}
@@ -376,7 +392,8 @@ function Observable.new(subscriber)
 		error("Observable cannot be called as a function")
 	end
 
-	if type(subscriber) ~= "function" then
+	--ROBLOX deviation: check for function and callable tables
+	if not isCallable(subscriber) then
 		error("Observable initializer must be a function")
 	end
 
@@ -394,10 +411,9 @@ function Observable:subscribe(observer, error_, complete)
 	return subscription
 end
 
--- error("not implemented"); --[[ ROBLOX TODO: Unhandled node for type: ExportNamedDeclaration ]]
-
 function Observable:forEach(fn: (value: any, cancel: (() -> ())?) -> ...any)
 	return Promise.new(function(resolve, reject)
+		--ROBLOX deviation: check for function and callable tables
 		if not isCallable(fn) then
 			--ROBLOX deviation: using Error instead of TypeError
 			reject(Error.new(tostring(fn) .. " is not a function"))
@@ -434,7 +450,8 @@ end
 
 -- ROBLOX TODO: function generics: map<R>(callback: (value: T) => R): Observable<R>
 function Observable:map(fn: (value: T_) -> R_): Observable<R_>
-	if typeof(fn) ~= "function" then
+	--ROBLOX deviation: check for function and callable tables
+	if not isCallable(fn) then
 		--ROBLOX deviation: using Error instead of TypeError
 		error(Error.new(tostring(fn) .. " is not a function"))
 	end
@@ -466,7 +483,8 @@ end
 
 -- ROBLOX TODO: function generics:  filter<S extends T>(callback: (value: T) => value is S): Observable<S>;
 function Observable:filter(fn: (value: T_) -> boolean): Observable<S_>
-	if typeof(fn) ~= "function" then
+	--ROBLOX deviation: check for function and callable tables
+	if not isCallable(fn) then
 		--ROBLOX deviation: using Error instead of TypeError
 		error(Error.new(tostring(fn) .. " is not a function"))
 	end
@@ -507,7 +525,8 @@ function Observable:reduce(
 	... --[[ROBLOX deviation: upstream uses 'arguments' to check for seed]]
 ): Observable<R_>
 	local arguments = { fn, ... }
-	if typeof(fn) ~= "function" then
+	--ROBLOX deviation: check for function and callable tables
+	if not isCallable(fn) then
 		--ROBLOX deviation: using Error instead of TypeError
 		error(Error.new(tostring(fn) .. " is not a function"))
 	end
@@ -603,7 +622,8 @@ end
 function Observable:flatMap(fn: (value: T_) -> ObservableLike<R_>): Observable<R_>
 	-- ROBLOX deviation: predefine variable
 	local completeIfDone
-	if typeof(fn) ~= "function" then
+	--ROBLOX deviation: check for function and callable tables
+	if not isCallable(fn) then
 		--ROBLOX deviation: using Error instead of TypeError
 		error(Error.new(tostring(fn) .. " is not a function"))
 	end
