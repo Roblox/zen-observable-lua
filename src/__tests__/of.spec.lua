@@ -8,10 +8,13 @@ local jestExpect = JestGlobals.expect
 
 local Promise = require(rootWorkspace.Promise)
 
-local ObservableModule = require(srcWorkspace.Observable)
-local Observable = ObservableModule.Observable
-
 return function()
+	-- ROBLOX deviation: upstream a global variable is created in the test setup.
+	-- A local variable is created to avoid using _G.Observable in every test
+	local Observable
+	beforeEach(function()
+		Observable = _G.Observable
+	end)
 	describe("of", function()
 		it("is a method on Observable", function()
 			jestExpect(function()

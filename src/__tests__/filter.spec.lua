@@ -1,4 +1,4 @@
--- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/map.js
+-- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/filter.js
 
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
@@ -13,19 +13,19 @@ return function()
 	beforeEach(function()
 		Observable = _G.Observable
 	end)
-	describe("map", function()
-		it("maps the results using the supplied callback", function()
+	describe("filter", function()
+		it("filters the results using the supplied callback", function()
 			local list = {}
-			Observable.from({ 1, 2, 3 })
-				:map(function(x: number)
-					return x * 2
+			Observable.from({ 1, 2, 3, 4 })
+				:filter(function(x)
+					return x > 2
 				end)
-				:forEach(function(x: number)
+				:forEach(function(x)
 					table.insert(list, x)
 					return #list
 				end)
 				:expect()
-			jestExpect(list).toEqual({ 2, 4, 6 })
+			jestExpect(list).toEqual({ 3, 4 })
 		end)
 	end)
 end

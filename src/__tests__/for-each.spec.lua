@@ -6,10 +6,13 @@ local rootWorkspace = srcWorkspace.Parent
 local JestGlobals = require(rootWorkspace.Dev.JestGlobals)
 local jestExpect = JestGlobals.expect
 
-local ObservableModule = require(srcWorkspace.Observable)
-local Observable = ObservableModule.Observable
-
 return function()
+	-- ROBLOX deviation: upstream a global variable is created in the test setup.
+	-- A local variable is created to avoid using _G.Observable in every test
+	local Observable
+	beforeEach(function()
+		Observable = _G.Observable
+	end)
 	describe("forEach", function()
 		it("rejects if the argument is not a function", function()
 			local promise = Observable.of(1, 2, 3):forEach()

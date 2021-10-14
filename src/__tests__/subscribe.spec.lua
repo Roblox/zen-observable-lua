@@ -5,21 +5,30 @@ local rootWorkspace = srcWorkspace.Parent
 local JestGlobals = require(rootWorkspace.Dev.JestGlobals)
 local jestExpect = JestGlobals.expect
 
-local ObservableModule = require(srcWorkspace.Observable)
-local Observable = ObservableModule.Observable
-
 local Promise = require(rootWorkspace.Promise)
 
+local testMethodProperty = require(script.Parent.properties).testMethodProperty
+
 return function()
+	-- ROBLOX deviation: upstream a global variable is created in the test setup.
+	-- A local variable is created to avoid using _G.Observable in every test
+	local Observable
+	beforeEach(function()
+		Observable = _G.Observable
+	end)
 	describe("subscribe", function()
-		-- ROBLOX deviation: can't check prototype in Lua
-		-- it('is a method of Observable.prototype', () => {
-		-- 	testMethodProperty(Observable.prototype, 'subscribe', {
-		-- 	  configurable: true,
-		-- 	  writable: true,
-		-- 	  length: 1,
-		-- 	});
-		--   });
+		it("is a method of Observable.prototype", function()
+			testMethodProperty(
+				--ROBLOX deviation, no prototype
+				Observable,
+				"subscribe",
+				{
+					configurable = true,
+					writable = true,
+					length = 4, --[[ in JS, only there's only 1 arg , but the implementation uses arguments to get optional params, in Lua these are explicit  ]]
+				}
+			)
+		end)
 
 		it("accepts an observer argument", function()
 			local observer
