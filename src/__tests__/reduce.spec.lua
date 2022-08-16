@@ -27,9 +27,10 @@ return function()
 
 		it("errors if empty and no seed", function()
 			local _ok, result, hasReturned = xpcall(function()
-				Observable.from({}).reduce(function(a: number, b: number)
-					return a + b
-				end)
+				Observable.from({})
+					.reduce(function(a: number, b: number)
+						return a + b
+					end)
 					:forEach(function()
 						return nil
 					end)

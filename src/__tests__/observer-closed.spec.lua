@@ -1,5 +1,4 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/observer-closed.js
-
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
 
@@ -49,7 +48,8 @@ return function()
 			Observable.new(function(x)
 				observer = x
 			end):subscribe(nil, function() end)
-			observer:error()
+			-- ROBLOX TODO: upstream test should at least pass in null
+			observer:error(nil)
 			jestExpect(observer.closed).toBe(true)
 		end)
 	end)

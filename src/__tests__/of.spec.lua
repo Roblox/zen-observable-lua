@@ -18,7 +18,8 @@ return function()
 	describe("of", function()
 		it("is a method on Observable", function()
 			jestExpect(function()
-				Observable.of("a-string", 1, 2, "apple", 4, 5, 6, "string")
+				-- ROBLOX deviation? definitely-typed has of as accepting R[], but this is mixed types. manually annotate.
+				Observable.of("a-string" :: string | number, 1, 2, "apple", 4, 5, 6, "string")
 			end).never.toThrowError()
 		end)
 

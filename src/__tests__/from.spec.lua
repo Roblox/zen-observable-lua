@@ -6,7 +6,8 @@ local rootWorkspace = srcWorkspace.Parent
 local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 type Array<T> = LuauPolyfill.Array<T>
 type Record<T, U> = { [T]: U }
-local Symbol = LuauPolyfill.Symbol
+-- ROBLOX deviation: type system doesn't track mutations on this global
+local Symbol = LuauPolyfill.Symbol :: any
 
 local Promise = require(rootWorkspace.Promise)
 
@@ -38,12 +39,16 @@ return function()
 
 		it("throws if the argument is null", function()
 			jestExpect(function()
-				Observable.from(nil)
+				-- ROBLOX deviation START: violates type safety, so we cast it away for this abuse case
+				(Observable.from :: any)(nil)
+				-- ROBLOX deviation END
 			end).toThrowError()
 		end)
 		it("throws if the argument is undefined", function()
 			jestExpect(function()
-				Observable.from(nil)
+				-- ROBLOX deviation START: violates type safety, so we cast it away for this abuse case
+				(Observable.from :: any)(nil)
+				-- ROBLOX deviation END
 			end).toThrowError()
 		end)
 

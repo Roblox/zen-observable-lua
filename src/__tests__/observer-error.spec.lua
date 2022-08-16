@@ -21,9 +21,7 @@ return function()
 		Observable = _G.Observable
 	end)
 	describe("observer.error", function()
-		-- ROBLOX FIXME luau: cannot convert to `Object?` for some reason
-		-- local function getObserver(inner: Object?)
-		local function getObserver(inner: any)
+		local function getObserver(inner: Object?)
 			local observer
 			Observable.new(function(x)
 				observer = x

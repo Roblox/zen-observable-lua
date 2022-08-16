@@ -1,6 +1,6 @@
 -- ROBLOX upstream: https://github.com/zenparsing/zen-observable/blob/v0.8.15/src/Observable.js
 -- ROBLOX upstream for types: https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/zen-observable/index.d.ts
---!nonstrict
+--!strict
 
 local srcWorkspace = script.Parent
 local rootWorkspace = srcWorkspace.Parent
@@ -15,21 +15,18 @@ local Array = LuauPolyfill.Array
 local Symbol = LuauPolyfill.Symbol
 type Object = LuauPolyfill.Object
 type Array<T> = LuauPolyfill.Array<T>
+type Error = LuauPolyfill.Error
 
 type Promise<T> = LuauPolyfill.Promise<T> & { expect: (self: Promise<T>) -> T }
 
 type Function = (...any) -> ...any
 
--- ROBLOX TODO. replace when fn generics are available
-type T_ = any
-type R_ = any
-type S_ = any
-
 -- Predefine variable
+-- ROBLOX TODO: strongly type the Observable table once some weird Luau bugs are fixed
 local Observable, SubscriptionObserver, notifySubscription, isObservableClass
 
---ROBLOX deviation: type "function" and callable tables need to be checked
-local function isCallable(value): boolean
+-- ROBLOX deviation: type "function" and callable tables need to be checked
+local function isCallable(value: any): boolean
 	if typeof(value) == "function" then
 		return true
 	end
@@ -63,7 +60,9 @@ local function getSymbol(name: string): string
 end
 
 if hasSymbols() and not hasSymbol("observable") then
-	Symbol.observable = Symbol("observable")
+	-- ROBLOX deviation START: Luau doesn't allow mutating tables from require in strict mode
+	(Symbol :: any).observable = Symbol("observable")
+	-- ROBLOX deviation END
 end
 
 local _SymbolIterator = getSymbol("iterator")
@@ -75,29 +74,31 @@ local function getMethod(obj: Object, key): Function | nil
 	if value == nil then
 		return nil
 	end
-	--ROBLOX deviation: check for function and callable tables
+	--ROBLOX deviation START: check for function and callable tables
 	if not isCallable(value) then
 		-- ROBLOX deviation: using Error instead of TypeError
 		error(Error.new(tostring(value) .. " is not a function"))
 	end
+	-- ROBLOX deviation END
 	return value
 end
 
 local function getSpecies(obj: Object)
-	-- ROBLOX deviation: obj.constructor not available
+	-- ROBLOX deviation START: obj.constructor not available
 	local ctor = obj[SymbolSpecies]
 	if ctor ~= nil then
 		return ctor
 	else
 		return Observable
 	end
+	-- ROBLOX deviation END
 end
 
-local function isObservable(x)
+local function isObservable(x): boolean
 	return instanceOf(x, Observable) -- SPEC: Brand check
 end
 
--- ROBLOX upstream deviation: hostReportError.log, lua functions does not support having other properties, so using setmetatable with __call enables to suppport this
+-- ROBLOX deviation START: hostReportError.log, lua functions does not support having other properties, so using setmetatable with __call enables to suppport this
 local hostReportError: any
 hostReportError = setmetatable({}, {
 	__call = function(_self, e)
@@ -110,6 +111,7 @@ hostReportError = setmetatable({}, {
 		end
 	end,
 })
+-- ROBLOX deviation END
 
 local function enqueue(fn)
 	Promise.delay(0):doneCall(function()
@@ -119,7 +121,7 @@ local function enqueue(fn)
 	end)
 end
 
-local function cleanupSubscription(subscription: Subscription<any>)
+local function cleanupSubscription<T>(subscription: Subscription<T>): ()
 	local cleanup = subscription._cleanup
 	if cleanup == nil then
 		return
@@ -131,29 +133,30 @@ local function cleanupSubscription(subscription: Subscription<any>)
 		return
 	end
 
-	local ok, err = pcall(function()
-		-- ROBLOX deviation: check for functions and callable tables
-		if isCallable(cleanup) then
-			cleanup()
-		else
-			local unsubscribe = getMethod(cleanup, "unsubscribe")
-			if unsubscribe then
-				unsubscribe(cleanup)
-			end
+	local ok = true
+	local err
+	-- ROBLOX deviation: check for functions and callable tables
+	if isCallable(cleanup) then
+		-- ROBLOX FIXME Luau: Luau should narrow based on guard above, and typeof() effect on isCallable parameter
+		ok, err = pcall(cleanup :: Function)
+	else
+		local unsubscribe = getMethod(cleanup :: Object, "unsubscribe")
+		if unsubscribe then
+			ok, err = pcall(unsubscribe, cleanup)
 		end
-	end)
+	end
 	if not ok then
 		hostReportError(err)
 	end
 end
 
-local function closeSubscription(subscription)
-	subscription._observer = nil
+local function closeSubscription<T>(subscription: Subscription<T>): ()
+	(subscription :: any)._observer = nil
 	subscription._queue = nil
 	subscription._state = "closed"
 end
 
-local function flushSubscription(subscription)
+local function flushSubscription<T>(subscription: Subscription<T>): ()
 	local queue = subscription._queue
 	if not Boolean.toJSBoolean(queue) then
 		return
@@ -162,38 +165,43 @@ local function flushSubscription(subscription)
 	subscription._queue = nil
 	subscription._state = "ready"
 
-	for i = 1, #queue, 1 do
-		notifySubscription(subscription, queue[i].type, queue[i].value)
+	-- ROBLOX FIXME Luau: Luau doesn't understand toJSBoolean narrowing side-effect
+	for i = 1, #(queue :: Array<any>), 1 do
+		notifySubscription(subscription, (queue :: Array<any>)[i].type, (queue :: Array<any>)[i].value)
 		if subscription._state == "closed" then
 			break
 		end
 	end
 end
 
-function notifySubscription(subscription, type, value)
+function notifySubscription<T>(subscription: Subscription<T>, type, value): ()
 	subscription._state = "running"
 	local observer = subscription._observer
 
-	local ok, err = pcall(function()
-		local m = getMethod(observer, type)
-		if type == "next" then
-			if m then
-				m(observer, value)
-			end
-		elseif type == "error" then
-			closeSubscription(subscription)
-			if m then
-				m(observer, value)
-			else
-				error(value)
-			end
-		elseif type == "complete" then
-			closeSubscription(subscription)
-			if m then
-				m(observer, value)
-			end
+	local err
+	local ok, m = pcall(getMethod, observer, type)
+	if not ok then
+		hostReportError(m)
+		return
+	end
+	if type == "next" then
+		if m then
+			ok, err = pcall(m, observer, value)
 		end
-	end)
+	elseif type == "error" then
+		closeSubscription(subscription)
+		if m then
+			ok, err = pcall(m, observer, value)
+		else
+			-- ROBLOX TODO: upstream this optimization, which will retain more stacktrace info
+			hostReportError(value)
+		end
+	elseif type == "complete" then
+		closeSubscription(subscription)
+		if m then
+			ok, err = pcall(m, observer, value)
+		end
+	end
 	if not ok then
 		hostReportError(err)
 	end
@@ -205,11 +213,13 @@ function notifySubscription(subscription, type, value)
 	end
 end
 
-local function onNotify(subscription, type, value: any?)
+local function onNotify<T>(subscription: Subscription<T>, type, value: T?): ()
 	if subscription._state == "closed" then
 		return
 	end
 	if subscription._state == "buffering" then
+		-- ROBLOX TODO: upstream should technically check this for nil also
+		assert(subscription._queue, "observable subscription queue nil during onNotify")
 		table.insert(subscription._queue, { type = type, value = value })
 		return
 	end
@@ -240,11 +250,13 @@ export type Subscription<T> = {
 	_state: string?,
 	_queue: Array<any>?,
 	_cleanup: Function | Object | nil,
-	_observer: Object, -- ROBLOX FIXME: avoid pitfall of recursive type with differing args check, revisit after https://jira.rbx.com/browse/CLI-47160
+	-- ROBLOX FIXME Luau: avoid pitfall of recursive type with differing args check, revisit after https://jira.rbx.com/browse/CLI-47160
+	_observer: Object,
 }
 
 local Subscription = {}
-Subscription.__index = function(t, k)
+-- ROBLOX FIXME Luau: Luau needs type states and local inference to infer this as any | nil
+Subscription.__index = function(t, k): any
 	if k == "closed" then
 		return t._state == "closed"
 	end
@@ -256,15 +268,15 @@ Subscription.__index = function(t, k)
 	end
 	return nil
 end
-Subscription.__newindex = function(t, k, v)
+Subscription.__newindex = function(t, k, v): ()
 	if k == "closed" then
 		error("setting getter-only property 'closed'")
 	end
 	rawset(t, k, v)
 end
 
-function Subscription.new(observer: Observer<any>, subscriber: Subscriber<any>): Subscription<any>
-	local self = setmetatable({}, Subscription)
+function Subscription.new<T>(observer: Observer<T>, subscriber: Subscriber<T>): Subscription<T>
+	local self = (setmetatable({}, Subscription) :: any) :: Subscription<T>
 	-- ASSERT: observer is an object
 	-- ASSERT: subscriber is callable
 	self._cleanup = nil
@@ -274,12 +286,12 @@ function Subscription.new(observer: Observer<any>, subscriber: Subscriber<any>):
 
 	local subscriptionObserver = SubscriptionObserver.new(self :: any)
 
-	local ok, _err = pcall(function()
-		self._cleanup = (subscriber :: Function)(subscriptionObserver)
-	end)
+	local ok, result = pcall(subscriber :: Function, subscriptionObserver)
 
-	if ok == false then
-		subscriptionObserver:error(_err)
+	if ok then
+		self._cleanup = result
+	else
+		subscriptionObserver:error(result)
 	end
 
 	if self._state == "initializing" then
@@ -296,7 +308,7 @@ function Subscription:unsubscribe()
 	end
 end
 
-type SubscriptionObserver<T> = {
+export type SubscriptionObserver<T> = {
 	closed: boolean,
 	next: (self: SubscriptionObserver<T>, value: T) -> (),
 	error: (self: SubscriptionObserver<T>, error: any) -> (),
@@ -321,9 +333,12 @@ SubscriptionObserver.__newindex = function(t, k, v)
 	rawset(t, k, v)
 end
 
-function SubscriptionObserver.new(subscription: Subscription<any>)
-	local self = setmetatable({}, SubscriptionObserver)
-	self._subscription = subscription
+function SubscriptionObserver.new<T>(subscription: Subscription<T>): SubscriptionObserver<T>
+	local self = (
+		setmetatable({
+			_subscription = subscription,
+		}, SubscriptionObserver) :: any
+	) :: SubscriptionObserver<T>
 	return self
 end
 
@@ -342,76 +357,102 @@ end
 type ObservableLike<T> = {
 	subscribe: (self: ObservableLike<T>) -> (Subscriber<T> | nil)?,
 }
--- ROBLOX FIXME: this is a workaround for the 'recursive type with different args' error, remove this once that's fixed
+-- ROBLOX FIXME Luau: this is a workaround for the 'recursive type with different args' error, remove this once that's fixed
 type _Observable<T> = {
-	subscribe: (self: _Observable<T>, observer: Observer<T>) -> Subscription<T>,
-	map: (self: _Observable<T>, fn: ((value: T) -> R_)) -> any,
-	forEach: (self: _Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<nil>,
-	flatMap: (self: _Observable<T>, callback: (value: T) -> ObservableLike<R_>) -> any,
-	concat: (self: _Observable<T>, ...any) -> any,
-	reduce: (
+	subscribe: (
 		self: _Observable<T>,
-		callback: (previousValue: R_, currentValue: T) -> R_,
-		initialValue: R_?
+		observer: Observer<T> | (value: T) -> (),
+		error_: ((error: any) -> ())?,
+		complete: (() -> ())?
+	) -> Subscription<T>,
+	map: <R>(self: _Observable<T>, fn: ((value: T) -> R)) -> any,
+	forEach: (self: _Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<nil>,
+	flatMap: <R>(self: _Observable<T>, callback: (value: T) -> ObservableLike<R>) -> any,
+	concat: <R>(self: _Observable<T>, ...any) -> any,
+	reduce: <R>(
+		self: _Observable<T>,
+		callback: (previousValue: R, currentValue: T) -> R,
+		initialValue: R?
 	) -> any,
 	filter: (self: _Observable<T>, callback: (value: T) -> boolean) -> any,
+
+	_subscriber: Subscriber<T>,
 }
 export type Observable<T> = {
-	subscribe: (self: Observable<T>, observer: Observer<T>) -> Subscription<T>,
-	-- ROBLOX TODO: function generics: map<R>(callback: (value: T) => R): Observable<R>
-	map: (self: Observable<T>, fn: ((value: T) -> R_)) -> _Observable<R_>,
-	forEach: (self: Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<nil>,
-	-- ROBLOX TODO: function generics: flatMap<R>(callback: (value: T) => ZenObservable.ObservableLike<R>): Observable<R>;
-	flatMap: (self: Observable<T>, callback: (value: T) -> ObservableLike<R_>) -> _Observable<R_>,
-	-- ROBLOX TODO: function generics: concat<R>(...observable: Array<Observable<R>>): Observable<R>;
-	concat: (self: Observable<T>, ..._Observable<R_>) -> _Observable<R_>,
-	-- ROBLOX TODO: function generics: reduce<R>(callback: (previousValue: R, currentValue: T) => R, initialValue?: R): Observable<R>;
-	reduce: (
+	subscribe: (
 		self: Observable<T>,
-		callback: (previousValue: R_, currentValue: T) -> R_,
-		initialValue: R_?
-	) -> _Observable<R_>,
-	-- ROBLOX TODO: function generics:  filter<S extends T>(callback: (value: T) => value is S): Observable<S>;
-	filter: (self: Observable<T>, callback: (value: T) -> boolean) -> _Observable<S_>,
+		observer: Observer<T> | (value: T) -> (),
+		error_: ((error: any) -> ())?,
+		complete: (() -> ())?
+	) -> Subscription<T>,
+	map: <R>(self: Observable<T>, fn: ((value: T) -> R)) -> _Observable<R>,
+	forEach: (self: Observable<T>, fn: (value: T, cancel: (() -> ())?) -> ...any) -> Promise<nil>,
+	flatMap: <R>(self: Observable<T>, callback: (value: T) -> ObservableLike<R>) -> _Observable<R>,
+	concat: <R>(self: Observable<T>, ..._Observable<R>) -> _Observable<R>,
+	reduce: <R>(
+		self: Observable<T>,
+		callback: (previousValue: R, currentValue: T) -> R,
+		initialValue: R?
+	) -> _Observable<R>,
+	-- ROBLOX TODO Luau: needs extends type expression:  filter<S extends T>(callback: (value: T) => value is S): Observable<S>;
+	filter: (self: Observable<T>, callback: (value: T) -> boolean) -> _Observable<any>,
+
+	_subscriber: Subscriber<T>,
 }
 
-Observable = {}
-Observable.__index = Observable
+type Observable_Statics = {
+	new: <T>(subscriber: Subscriber<T>) -> Observable<T>,
+	from: <R>(C_: any, x_: Observable<R> | ObservableLike<R> | Array<R>) -> Observable<R>,
+	of: <R>(C_: any, ...R) -> Observable<R>,
+}
+
+Observable = ({} :: any) :: Observable<any> & Observable_Statics;
+(Observable :: any).__index = Observable
 
 -- ROBLOX deviation: adding this method to allow overriding the class of static methods
 function isObservableClass(obj: any)
 	return typeof(obj) == "table"
-		and obj[SymbolObservable] == Observable[SymbolObservable]
+		and obj[SymbolObservable] == (Observable :: any)[SymbolObservable]
 		and typeof(rawget(obj, "new")) == "function"
 end
 
-function Observable.new(subscriber)
-	local self = setmetatable({}, Observable)
-
-	if not instanceOf(self, Observable) then
-		error("Observable cannot be called as a function")
-	end
+function Observable.new<T>(subscriber: Subscriber<T>): Observable<T>
+	-- ROBLOX deviation: this logic can't/doesn't apply in Lua
+	-- if not instanceOf(self, Observable) then
+	-- 	error("Observable cannot be called as a function")
+	-- end
 
 	--ROBLOX deviation: check for function and callable tables
 	if not isCallable(subscriber) then
 		error("Observable initializer must be a function")
 	end
 
-	self._subscriber = subscriber
+	local self = (setmetatable({
+		_subscriber = subscriber,
+	}, Observable) :: any) :: Observable<T>
 
 	return self
 end
 
-function Observable:subscribe(observer, error_, complete)
+function Observable:subscribe(
+	observer: Observer<T_> | (self: Observer<T_>, value: T_) -> (),
+	error_: ((self: Observer<T_>, error: any) -> ())?,
+	complete: ((self: Observer<T_>) -> ())?
+): Subscription<T_>
 	if typeof(observer) ~= "table" or observer == nil then
-		observer = { next = observer, error = error_, complete = complete }
+		observer = {
+			start = nil,
+			next = observer :: (self: Observer<T_>, value: T_) -> (),
+			error = error_,
+			complete = complete,
+		} :: Observer<T_>
 	end
 
-	local subscription = Subscription.new(observer, self._subscriber)
+	local subscription = Subscription.new(observer :: Observer<T_>, self._subscriber)
 	return subscription
 end
 
-function Observable:forEach(fn: (value: any, cancel: (() -> ())?) -> ...any)
+function Observable:forEach(fn: (value: T_, cancel: (() -> ())?) -> ()): Promise<nil>
 	return Promise.new(function(resolve, reject)
 		--ROBLOX deviation: check for function and callable tables
 		if not isCallable(fn) then
@@ -428,10 +469,9 @@ function Observable:forEach(fn: (value: any, cancel: (() -> ())?) -> ...any)
 		end
 
 		subscription = self:subscribe({
-			next = function(_self, value)
-				local ok, result = pcall(function()
-					fn(value, done)
-				end)
+			next = function(_self, value): ()
+				-- ROBLOX FIXME Luau: CLI-49835, "Function only returns 1 value, 2 are required"
+				local ok, result = pcall(fn :: Function, value, done)
 
 				if not ok then
 					reject(result)
@@ -448,8 +488,8 @@ function Observable:forEach(fn: (value: any, cancel: (() -> ())?) -> ...any)
 	end)
 end
 
--- ROBLOX TODO: function generics: map<R>(callback: (value: T) => R): Observable<R>
-function Observable:map(fn: (value: T_) -> R_): Observable<R_>
+type T_ = any
+function Observable:map<R>(fn: (value: T_) -> R): Observable<R>
 	--ROBLOX deviation: check for function and callable tables
 	if not isCallable(fn) then
 		--ROBLOX deviation: using Error instead of TypeError
@@ -460,16 +500,16 @@ function Observable:map(fn: (value: T_) -> R_): Observable<R_>
 
 	return C.new(function(observer)
 		return self:subscribe({
-			next = function(_self, value)
+			next = function(_self, value): ()
 				--[[ ROBLOX COMMENT: try-catch block conversion ]]
-				local ok, result = pcall(function()
-					value = fn(value)
-				end)
+				local ok, result = pcall(fn, value)
 				if not ok then
-					return observer:error(result)
+					-- ROBLOX TODO: upstream returns value of error, which is void. upstream the fix.
+					observer:error(result)
+					return
 				end
+				value = result
 				observer:next(value)
-				return nil
 			end,
 			error = function(_self, e)
 				observer:error(e)
@@ -481,7 +521,8 @@ function Observable:map(fn: (value: T_) -> R_): Observable<R_>
 	end)
 end
 
--- ROBLOX TODO: function generics:  filter<S extends T>(callback: (value: T) => value is S): Observable<S>;
+type S_ = any
+-- ROBLOX TODO Luau: needs 'extends' syntax:  filter<S extends T>(callback: (value: T) => value is S): Observable<S>;
 function Observable:filter(fn: (value: T_) -> boolean): Observable<S_>
 	--ROBLOX deviation: check for function and callable tables
 	if not isCallable(fn) then
@@ -491,23 +532,22 @@ function Observable:filter(fn: (value: T_) -> boolean): Observable<S_>
 
 	local C = getSpecies(self)
 
-	return C.new(function(observer)
+	return C.new(function<T>(observer: SubscriptionObserver<T>)
 		return self:subscribe({
-			next = function(_self, value)
+			next = function(_self, value): ()
 				--[[ ROBLOX COMMENT: try-catch block conversion ]]
-				local _ok, result, hasReturned = xpcall(function()
-					if not Boolean.toJSBoolean(fn(value)) then
-						return nil, true
-					end
-					return nil
-				end, function(e)
-					return observer:error(e), true
-				end)
-				if hasReturned then
-					return result
+				local ok, result = xpcall(fn, function(e)
+					-- ROBLOX TODO: error returns void, fix this in upstream
+					observer:error(e)
+				end, value)
+				if ok and not Boolean.toJSBoolean(result) then
+					return
+				end
+				if not ok then
+					return
 				end
 				observer:next(value)
-				return nil
+				return
 			end,
 			error = function(_self, e)
 				observer:error(e)
@@ -519,12 +559,8 @@ function Observable:filter(fn: (value: T_) -> boolean): Observable<S_>
 	end)
 end
 
--- ROBLOX TODO: function generics: reduce<R>(callback: (previousValue: R, currentValue: T) => R, initialValue?: R): Observable<R>;
-function Observable:reduce(
-	fn: (previousValue: R_, currentValue: T_) -> R_,
-	... --[[ROBLOX deviation: upstream uses 'arguments' to check for seed]]
-): Observable<R_>
-	local arguments = { fn, ... }
+function Observable:reduce<R>(fn: (previousValue: R, currentValue: T_) -> R, ...: R): Observable<R>
+	local arguments = { fn :: any, ... }
 	--ROBLOX deviation: check for function and callable tables
 	if not isCallable(fn) then
 		--ROBLOX deviation: using Error instead of TypeError
@@ -535,27 +571,24 @@ function Observable:reduce(
 
 	local hasSeed = #arguments > 1
 	local hasValue = false
-	local seed = arguments[2]
+	local seed = arguments[2] :: R
 	local acc = seed
-	return C.new(function(observer)
+	-- ROBLOX TODO: should this be T_? type checker thinks R is incorrect
+	return C.new(function(observer: SubscriptionObserver<T_>)
 		return self:subscribe({
-			next = function(_self, value)
+			next = function(_self, value): ()
 				local first = not hasValue
 				hasValue = true
 				if not first or hasSeed then
 					--[[ ROBLOX COMMENT: try-catch block conversion ]]
-					local _ok, result, hasReturned = xpcall(function()
-						acc = fn(acc, value)
-					end, function(e)
-						return observer:error(e), true
-					end)
-					if hasReturned then
-						return result
-					end
+					local _ok
+					_ok, acc = xpcall(fn, function(e)
+						-- ROBLOX TODO: this is a bug in upstream, observer.error returns void and shouldn't use 'return'
+						observer:error(e)
+					end, acc, value)
 				else
 					acc = value
 				end
-				return nil
 			end,
 			error = function(_self, e)
 				observer:error(e)
@@ -563,18 +596,17 @@ function Observable:reduce(
 			complete = function(_self)
 				if not hasValue and not hasSeed then
 					--ROBLOX deviation: using Error instead of TypeError
-					return observer:error(Error.new("Cannot reduce an empty sequence"))
+					-- ROBLOX TODO: this is a bug in upstream, observer.error returns void and shouldn't use 'return'
+					observer:error(Error.new("Cannot reduce an empty sequence"))
 				end
 				observer:next(acc)
 				observer:complete()
-				return nil
 			end,
 		})
 	end)
 end
 
--- ROBLOX TODO: function generics: concat<R>(...observable: Array<Observable<R>>): Observable<R>;
-function Observable:concat(...: Observable<R_>): Observable<R_>
+function Observable:concat<R>(...: Observable<R>): Observable<R>
 	local sources = { ... }
 
 	local C = getSpecies(self)
@@ -582,7 +614,7 @@ function Observable:concat(...: Observable<R_>): Observable<R_>
 	return C.new(function(observer)
 		local subscription
 		local index = 1 -- [[ ROBLOX deviation: index starts from 1 in Lua]]
-		local function startNext(next)
+		local function startNext(next: any): ()
 			subscription = next:subscribe({
 				next = function(_self, v)
 					observer:next(v)
@@ -611,15 +643,15 @@ function Observable:concat(...: Observable<R_>): Observable<R_>
 
 		return function()
 			if Boolean.toJSBoolean(subscription) then
-				subscription:unsubscribe()
+				-- ROBLOX FIXME Luau: Luau should know non-nil narrowing on first argument of toJSBoolean
+				(subscription :: any):unsubscribe()
 				subscription = nil
 			end
 		end
 	end)
 end
 
--- ROBLOX TODO: function generics: flatMap<R>(callback: (value: T) => ZenObservable.ObservableLike<R>): Observable<R>;
-function Observable:flatMap(fn: (value: T_) -> ObservableLike<R_>): Observable<R_>
+function Observable:flatMap<R>(fn: (value: T_) -> ObservableLike<R>): Observable<R>
 	-- ROBLOX deviation: predefine variable
 	local completeIfDone
 	--ROBLOX deviation: check for function and callable tables
@@ -636,14 +668,11 @@ function Observable:flatMap(fn: (value: T_) -> ObservableLike<R_>): Observable<R
 			next = function(_self, value)
 				if Boolean.toJSBoolean(fn) then
 					--[[ ROBLOX COMMENT: try-catch block conversion ]]
-					local _ok, result, hasReturned = xpcall(function()
-						value = fn(value)
-					end, function(e)
-						return observer:error(e), true
-					end)
-					if hasReturned then
-						return result
-					end
+					local _ok
+					_ok, value = xpcall(fn, function(e)
+						-- ROBLOX TODO: this is a bug in upstream, error doesn't return anything
+						observer:error(e)
+					end, value)
 				end
 
 				local inner
@@ -668,7 +697,8 @@ function Observable:flatMap(fn: (value: T_) -> ObservableLike<R_>): Observable<R
 				table.insert(subscriptions, inner)
 				return nil
 			end,
-			error = function(_self, e)
+			-- ROBLOX FIXME Luau: any needed to avoid TypeError: Generic supertype escaping scope
+			error = function(_self, e: any)
 				observer:error(e)
 			end,
 			complete = function(_self)
@@ -691,12 +721,12 @@ function Observable:flatMap(fn: (value: T_) -> ObservableLike<R_>): Observable<R
 	end)
 end
 
-Observable[SymbolObservable] = function(self)
+(Observable :: any)[SymbolObservable] = function(self)
 	return self
 end
 
---ROBLOX TODO: function generics: from<R>(observable: Observable<R> | ZenObservable.ObservableLike<R> | ArrayLike<R>): Observable<R>;
-function Observable.from(C_, x_: Object?): Observable<R_>
+-- ROBLOX FIXME Luau: any needed to avoid TypeError: Generic supertype escaping scope
+function Observable.from<R>(C_: any, x_: Observable<R> | ObservableLike<R> | Array<R>): Observable<R>
 	local C, x
 	if isObservableClass(C_) then
 		C = C_
@@ -711,7 +741,8 @@ function Observable.from(C_, x_: Object?): Observable<R_>
 		error(Error.new(tostring(x) .. " is not an object"))
 	end
 
-	local method = getMethod(x, SymbolObservable)
+	-- ROBLOX FIXME Luau: Luau doesn't narrow based on guard above, needs type states
+	local method = getMethod(x :: Object, SymbolObservable)
 	if method then
 		local observable = method(x)
 
@@ -751,7 +782,8 @@ function Observable.from(C_, x_: Object?): Observable<R_>
 				if observer.closed then
 					return
 				end
-				for _, item in pairs(x) do
+				-- ROBLOX FIXME Luau: Luau doesn't narrow based on guard above, needs type states
+				for _, item in pairs(x :: Object) do
 					observer:next(item)
 					if observer.closed then
 						return
@@ -767,8 +799,8 @@ function Observable.from(C_, x_: Object?): Observable<R_>
 	error(Error.new(tostring(x) .. " is not observable"))
 end
 
--- ROBLOX TODO: function generics: of<R>(...items: R[]): Observable<R>;
-function Observable.of(C_, ...: R_): Observable<R_>
+-- ROBLOX FIXME Luau: any needed to avoid TypeError: Generic supertype escaping scope
+function Observable.of<R>(C_: any, ...: R): Observable<R>
 	local C, items
 	if isObservableClass(C_) then
 		C = C_
@@ -799,10 +831,11 @@ end
 --   } ]]
 
 if hasSymbols() then
-	Observable[Symbol("extensions")] = {
+	-- ROBLOX TODO: TypeError: Type '{ hostReportError: any, symbol: string }' could not be converted into '<a>(a) -> a'
+	(Observable :: any)[Symbol("extensions")] = {
 		symbol = SymbolObservable,
 		hostReportError = hostReportError,
-	}
+	} :: any
 end
 
 return { Observable = Observable }

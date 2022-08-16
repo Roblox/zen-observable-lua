@@ -1,6 +1,6 @@
 Packages/*
 !Packages/.robloxrc
-
+sourcemap.json
 rotriever.lock
 *.rbxmx
 *.rbxm

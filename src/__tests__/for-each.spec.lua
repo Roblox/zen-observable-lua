@@ -15,8 +15,9 @@ return function()
 	end)
 	describe("forEach", function()
 		it("rejects if the argument is not a function", function()
-			local promise = Observable.of(1, 2, 3):forEach()
-			--[[ ROBLOX COMMENT: try-catch block conversion ]]
+			-- ROBLOX deviation START: violates type safety, so we cast it away for this abuse case
+			local promise = (Observable.of :: any)(1, 2, 3):forEach()
+			-- ROBLOX deviation END
 			xpcall(function()
 				promise:expect()
 				jestExpect(true).toBe(false)
@@ -87,7 +88,11 @@ return function()
 				:forEach(function(value, cancel)
 					table.insert(results, value)
 					if value > 1 then
-						return cancel()
+						-- ROBLOX TODO: cancel isn't supported by definitely-typed, but upstream test should check for undefined at least
+						-- ROBLOX TODO: upstream tries to return from foreach function, which is incorrect
+						if cancel ~= nil then
+							cancel()
+						end
 					end
 				end)
 				:expect()

@@ -1,12 +1,19 @@
 [package]
 name = "ZenObservable"
 version = "0.8.15"
-author = "Roblox"
 content_root = "src"
+authors = [
+	"Chris Trześniewski <k.trzesniewski@gmail.com>",
+	"Ignacio Falk <flakolefluk@gmail.com>",
+	"Matt Hargett <plaztiksyke@gmail.com>",
+	"Olivier Trepanier <otrepanier@roblox.com>",
+	"Paul Doyle <pdoyle@roblox.com>",
+	"Oluwole Adebiyi",
+]
 
 [dependencies]
-LuauPolyfill = "github.com/roblox/luau-polyfill@0.2.1"
-Promise = "github.com/evaera/roblox-lua-promise@3.1.0"
+LuauPolyfill = "github.com/roblox/luau-polyfill@0.4.1"
+Promise = "github.com/roblox/roblox-lua-promise@3.1.0"
 
 [dev_dependencies]
-JestGlobals = "github.com/roblox/jest-roblox@2.1.1"
+JestGlobals = "github.com/roblox/jest-roblox@2.4.1"

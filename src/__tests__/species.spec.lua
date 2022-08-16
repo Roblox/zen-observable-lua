@@ -4,7 +4,8 @@ local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
 local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 local instanceOf = LuauPolyfill.instanceof
-local Symbol = LuauPolyfill.Symbol
+-- ROBLOX deviation: type system doesn't track mutations on this global
+local Symbol = LuauPolyfill.Symbol :: any
 
 local JestGlobals = require(rootWorkspace.Dev.JestGlobals)
 local jestExpect = JestGlobals.expect

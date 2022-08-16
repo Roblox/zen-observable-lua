@@ -1,5 +1,5 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/filter.js
-
+--!strict
 local srcWorkspace = script.Parent.Parent
 local rootWorkspace = srcWorkspace.Parent
 
@@ -26,6 +26,14 @@ return function()
 				end)
 				:expect()
 			jestExpect(list).toEqual({ 3, 4 })
+		end)
+		-- ROBLOX TODO: submit this new test upstream
+		it("errors when given non-function", function()
+			jestExpect(function()
+				local NOT_A_FUNCTION = 31337
+				-- ROBLOX FIXME Luau: type checking should prevent this abuse, but we need recursive type workarounds removed first
+				Observable.from({ 1, 2, 3, 4 }):filter(NOT_A_FUNCTION):expect()
+			end).toThrow("31337 is not a function")
 		end)
 	end)
 end
