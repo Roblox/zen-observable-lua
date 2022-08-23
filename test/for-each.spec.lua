@@ -1,7 +1,6 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/for-each.js
 
-local srcWorkspace = script.Parent.Parent
-local rootWorkspace = srcWorkspace.Parent
+local rootWorkspace = script.Parent.Parent
 
 local JestGlobals = require(rootWorkspace.Dev.JestGlobals)
 local jestExpect = JestGlobals.expect

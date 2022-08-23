@@ -6,6 +6,9 @@
       "$path": "Packages",
       "ZenObservable": {
         "$path": "src"
+      },
+      "Tests": {
+        "$path": "test"
       }
     }
   }

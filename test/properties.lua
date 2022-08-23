@@ -1,8 +1,7 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/properties.js
 -- ROBLOX comment: this file contains many deviations to achieve similar checks
 local exports = {}
-local srcWorkspace = script.Parent.Parent
-local rootWorkspace = srcWorkspace.Parent
+local rootWorkspace = script.Parent.Parent
 local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 local Boolean = LuauPolyfill.Boolean
 local Array = LuauPolyfill.Array

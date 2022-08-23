@@ -1,7 +1,6 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/subscription.js
 
-local srcWorkspace = script.Parent.Parent
-local rootWorkspace = srcWorkspace.Parent
+local rootWorkspace = script.Parent.Parent
 
 type Function = () -> ()
 local JestGlobals = require(rootWorkspace.Dev.JestGlobals)

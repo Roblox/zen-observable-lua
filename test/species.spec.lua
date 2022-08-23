@@ -1,7 +1,6 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/species.js
 
-local srcWorkspace = script.Parent.Parent
-local rootWorkspace = srcWorkspace.Parent
+local rootWorkspace = script.Parent.Parent
 local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 local instanceOf = LuauPolyfill.instanceof
 -- ROBLOX deviation: type system doesn't track mutations on this global

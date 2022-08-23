@@ -1,13 +1,12 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/setup.js
 --!strict
-local srcWorkspace = script.Parent.Parent
-local rootWorkspace = srcWorkspace.Parent
+local rootWorkspace = script.Parent.Parent
 local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 local Object = LuauPolyfill.Object
 local Array = LuauPolyfill.Array
 type Object = LuauPolyfill.Object
 
-local ObservableModule = require(srcWorkspace.Observable)
+local ObservableModule = require(rootWorkspace.ZenObservable)
 local Observable_ = ObservableModule.Observable
 
 -- ROBLOX deviation: used instaead of getOwnPropertySymbols

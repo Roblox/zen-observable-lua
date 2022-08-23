@@ -8,7 +8,7 @@ local TestEZ = JestGlobals.TestEZ
 
 -- Run all tests, collect results, and report to stdout.
 local result = TestEZ.TestBootstrap:run(
-	{ Packages.ZenObservable },
+	{ Packages.ZenObservable, Packages.Tests },
 	TestEZ.Reporters.TextReporterQuiet
 )
 

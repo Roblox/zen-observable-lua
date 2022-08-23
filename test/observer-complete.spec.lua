@@ -1,7 +1,6 @@
 -- ROBLOX upstream https://github.com/zenparsing/zen-observable/blob/v0.8.15/test/observer-complete.js
 
-local srcWorkspace = script.Parent.Parent
-local rootWorkspace = srcWorkspace.Parent
+local rootWorkspace = script.Parent.Parent
 local LuauPolyfill = require(rootWorkspace.LuauPolyfill)
 local instanceOf = LuauPolyfill.instanceof
 local Error = LuauPolyfill.Error
