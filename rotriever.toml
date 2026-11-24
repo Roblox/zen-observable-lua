@@ -2,6 +2,7 @@
 name = "ZenObservable"
 version = "0.8.16-roblox.2"
 content_root = "src"
+repository = "https://github.com/Roblox/zen-observable-lua-internal"
 authors = [
 	"Chris Trześniewski <k.trzesniewski@gmail.com>",
 	"Ignacio Falk <flakolefluk@gmail.com>",
